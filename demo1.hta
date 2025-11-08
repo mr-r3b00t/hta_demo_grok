@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>System Information Tool - Benign Demo with File Retrieval Examples</title>
+    <title>System Information Tool - Benign Demo with File Retrieval Examples (Fixed)</title>
     <HTA:APPLICATION 
         ID="oHTA"
         APPLICATIONNAME="SysInfoDemo"
@@ -40,8 +40,13 @@
         ' Note: ifconfig is Unix-like; on Windows, ipconfig is used. Output to temp file and read it.
         strTempPath = objShell.ExpandEnvironmentStrings("%TEMP%") & "\netinfo.txt"
         Dim strPSCmd
-        strPSCmd = "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command ""ipconfig /all | Out-File -FilePath '" & strTempPath & "' -Encoding UTF8"""
+        strPSCmd = "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command " & Chr(34) & "ipconfig /all | Out-File -FilePath '" & strTempPath & "' -Encoding UTF8" & Chr(34)
+        On Error Resume Next
         objShell.Run strPSCmd, 0, True  ' Run hidden and wait
+        If Err.Number <> 0 Then
+            strOutput = strOutput & "<p>Network info command failed: " & Err.Description & " (Code: " & Err.Number & ")</p>"
+        End If
+        On Error Goto 0
 
         ' Read and append ipconfig output (benign, local only)
         If objFSO.FileExists(strTempPath) Then
@@ -53,10 +58,10 @@
             objFile.Close
             objFSO.DeleteFile strTempPath  ' Cleanup
         Else
-            strOutput = strOutput & "<p>Network info unavailable.</p>"
+            strOutput = strOutput & "<h3>Network Configuration:</h3><p>Output file not found (command may have failed).</p>"
         End If
 
-        ' ========== NEW: Benign File Retrieval Examples ==========
+        ' ========== Benign File Retrieval Examples ==========
         ' Demo URL: A harmless public text file (e.g., from httpbin.org - returns JSON with request info)
         Dim strDemoURL, strBaseTemp
         strDemoURL = "https://httpbin.org/get"  ' Benign endpoint; returns JSON about the request
@@ -109,18 +114,30 @@
         If objFSO.FileExists(strTempPath) Then objFSO.DeleteFile strTempPath
 
         ' 3. BITS Method (Via PowerShell - BITS jobs for background/resumable transfers; benign small file)
+        ' Fixed: Use Chr(34) for quotes, wrap in cmd /c, add error handling
         strTempPath = strBaseTemp & "demo_bits.txt"
-        strPSCmd = "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command ""try { Start-BitsTransfer -Source '" & strDemoURL & "' -Destination '" & strTempPath & "' -Asynchronous $false; Get-Content '" & strTempPath & "' | Out-String } catch { 'BITS Failed: ' + $_.Exception.Message } | Out-File -FilePath '" & strBaseTemp & "bits_output.txt' -Encoding UTF8"""
-        objShell.Run strPSCmd, 0, True
-        Dim strBitsOutputPath
+        Dim strBitsOutputPath, strBitsCmd
         strBitsOutputPath = strBaseTemp & "bits_output.txt"
+        strBitsCmd = "cmd /c powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command " & Chr(34) & _
+                     "try { Start-BitsTransfer -Source '" & strDemoURL & "' -Destination '" & strTempPath & "' -Asynchronous $false; " & _
+                     "if (Test-Path '" & strTempPath & "') { Get-Content '" & strTempPath & "' | Out-String } else { 'Download failed' } } " & _
+                     "catch { 'BITS Failed: ' + $_.Exception.Message } | Out-File -FilePath '" & strBitsOutputPath & "' -Encoding UTF8" & Chr(34)
+        On Error Resume Next
+        Dim intReturn
+        intReturn = objShell.Run(strBitsCmd, 0, True)  ' Run hidden and wait; capture return code
+        If Err.Number <> 0 Then
+            strOutput = strOutput & "<h3>3. BITS Download:</h3><p>Command execution failed: " & Err.Description & " (Code: " & Err.Number & "; Return: " & intReturn & ")</p>"
+        ElseIf intReturn <> 0 Then
+            strOutput = strOutput & "<h3>3. BITS Download:</h3><p>Command returned non-zero: " & intReturn & " (Possible BITS permission issue - run as admin?)</p>"
+        End If
+        On Error Goto 0
         If objFSO.FileExists(strBitsOutputPath) Then
             Set objFile = objFSO.OpenTextFile(strBitsOutputPath, 1)
             strOutput = strOutput & "<h3>3. BITS Download:</h3><pre>Downloaded via Start-BitsTransfer to " & strTempPath & "<br/>" & objFile.ReadAll & "</pre>"
             objFile.Close
             objFSO.DeleteFile strBitsOutputPath
         Else
-            strOutput = strOutput & "<h3>3. BITS Download:</h3><p>Output file not found (BITS may require admin or fail on HTTPS).</p>"
+            strOutput = strOutput & "<h3>3. BITS Download:</h3><p>Output file not found (BITS may require admin rights or fail on HTTPS).</p>"
         End If
         If objFSO.FileExists(strTempPath) Then objFSO.DeleteFile strTempPath
 
@@ -128,7 +145,8 @@
         Document.getElementById("output").innerHTML = strOutput
 
         ' Optional: Show a message box summary (benign notification)
-        MsgBox "System info and file retrieval demos completed! Check the window for details.", 64, "Info Complete"
+        MsgBox "System info and file retrieval demos completed! Check the window for details." & vbCrLf & vbCrLf & _
+               "Note: BITS often needs admin privileges; if it failed, try running the HTA as administrator.", 64, "Info Complete"
 
         ' Close after a delay (optional, for demo)
         ' window.setTimeout "window.close", 30000  ' Uncomment to auto-close after 30s
