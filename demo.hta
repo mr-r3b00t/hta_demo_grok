@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>System Information Tool - Benign Demo</title>
+    <HTA:APPLICATION 
+        ID="oHTA"
+        APPLICATIONNAME="SysInfoDemo"
+        BORDER="thin"
+        CAPTION="yes"
+        SHOWINTASKBAR="yes"
+        SINGLEINSTANCE="yes"
+        SYSMENU="yes"
+        WINDOWSTATE="normal"/>
+</head>
+<body>
+    <h2>Gathering Local System Information...</h2>
+    <p>Please wait while we collect basic computer details and network config.</p>
+    <div id="output"></div>
+    <script language="VBScript">
+        ' Benign variable setup
+        Dim objShell, objFSO, strOutput, strTempPath, objWMI, colItems, objItem
+        Set objShell = CreateObject("WScript.Shell")
+        Set objFSO = CreateObject("Scripting.FileSystemObject")
+        Set objWMI = GetObject("winmgmts:\\.\root\cimv2")
+
+        ' Collect local computer info using WMI (benign query)
+        strOutput = "<h3>Local Computer Information:</h3><ul>"
+        Set colItems = objWMI.ExecQuery("SELECT * FROM Win32_ComputerSystem")
+        For Each objItem in colItems
+            strOutput = strOutput & "<li><strong>Computer Name:</strong> " & objItem.Name & "</li>"
+            strOutput = strOutput & "<li><strong>User Name:</strong> " & objItem.UserName & "</li>"
+        Next
+        Set colItems = objWMI.ExecQuery("SELECT * FROM Win32_OperatingSystem")
+        For Each objItem in colItems
+            strOutput = strOutput & "<li><strong>OS Version:</strong> " & objItem.Caption & " (Build " & objItem.BuildNumber & ")</li>"
+        Next
+        strOutput = strOutput & "</ul>"
+
+        ' Run PowerShell command for network info (using ipconfig on Windows; ifconfig equivalent)
+        ' Note: ifconfig is Unix-like; on Windows, ipconfig is used. Output to temp file and read it.
+        strTempPath = objShell.ExpandEnvironmentStrings("%TEMP%") & "\netinfo.txt"
+        Dim strPSCmd
+        strPSCmd = "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command ""ipconfig /all | Out-File -FilePath '" & strTempPath & "' -Encoding UTF8"""
+        objShell.Run strPSCmd, 0, True  ' Run hidden and wait
+
+        ' Read and append ipconfig output (benign, local only)
+        If objFSO.FileExists(strTempPath) Then
+            Dim objFile
+            Set objFile = objFSO.OpenTextFile(strTempPath, 1)  ' For reading
+            strOutput = strOutput & "<h3>Network Configuration (ipconfig output):</h3><pre>"
+            strOutput = strOutput & objFile.ReadAll
+            strOutput = strOutput & "</pre>"
+            objFile.Close
+            objFSO.DeleteFile strTempPath  ' Cleanup
+        Else
+            strOutput = strOutput & "<p>Network info unavailable.</p>"
+        End If
+
+        ' Display output in the HTA window
+        Document.getElementById("output").innerHTML = strOutput
+
+        ' Optional: Show a message box summary (benign notification)
+        MsgBox "System info collected successfully! Check the window for details.", 64, "Info Complete"
+
+        ' Close after a delay (optional, for demo)
+        ' window.setTimeout "window.close", 30000  ' Uncomment to auto-close after 30s
+    </script>
+</body>
+</html>
