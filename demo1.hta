@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>System Information Tool - Benign Demo with File Retrieval Examples (Fixed)</title>
+    <title>System Information Tool - Benign Demo with File Retrieval Examples (Robust Fix)</title>
     <HTA:APPLICATION 
         ID="oHTA"
         APPLICATIONNAME="SysInfoDemo"
@@ -14,7 +14,7 @@
 </head>
 <body>
     <h2>Gathering Local System Information and Demo File Retrieval...</h2>
-    <p>Please wait while we collect basic computer details, network config, and demonstrate benign file downloads using BITS, HTTP, and XMLHTTP.</p>
+    <p>Please wait while we collect basic computer details, network config, and demonstrate benign file downloads using XMLHTTP, WinHTTP, and BITS.</p>
     <div id="output"></div>
     <script language="VBScript">
         ' Benign variable setup
@@ -36,120 +36,171 @@
         Next
         strOutput = strOutput & "</ul>"
 
-        ' Run PowerShell command for network info (using ipconfig on Windows; ifconfig equivalent)
-        ' Note: ifconfig is Unix-like; on Windows, ipconfig is used. Output to temp file and read it.
+        ' Run PowerShell command for network info (using ipconfig on Windows)
         strTempPath = objShell.ExpandEnvironmentStrings("%TEMP%") & "\netinfo.txt"
         Dim strPSCmd
         strPSCmd = "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command " & Chr(34) & "ipconfig /all | Out-File -FilePath '" & strTempPath & "' -Encoding UTF8" & Chr(34)
         On Error Resume Next
-        objShell.Run strPSCmd, 0, True  ' Run hidden and wait
+        objShell.Run strPSCmd, 0, True
         If Err.Number <> 0 Then
-            strOutput = strOutput & "<p>Network info command failed: " & Err.Description & " (Code: " & Err.Number & ")</p>"
+            strOutput = strOutput & "<p><strong>Error in ipconfig:</strong> " & Err.Description & " (Code: " & Err.Number & ")</p>"
+            Err.Clear
         End If
         On Error Goto 0
 
-        ' Read and append ipconfig output (benign, local only)
+        ' Read and append ipconfig output
         If objFSO.FileExists(strTempPath) Then
             Dim objFile
-            Set objFile = objFSO.OpenTextFile(strTempPath, 1)  ' For reading
-            strOutput = strOutput & "<h3>Network Configuration (ipconfig output):</h3><pre>"
-            strOutput = strOutput & objFile.ReadAll
-            strOutput = strOutput & "</pre>"
+            Set objFile = objFSO.OpenTextFile(strTempPath, 1)
+            strOutput = strOutput & "<h3>Network Configuration (ipconfig output):</h3><pre>" & objFile.ReadAll & "</pre>"
             objFile.Close
-            objFSO.DeleteFile strTempPath  ' Cleanup
+            objFSO.DeleteFile strTempPath
         Else
-            strOutput = strOutput & "<h3>Network Configuration:</h3><p>Output file not found (command may have failed).</p>"
+            strOutput = strOutput & "<h3>Network Configuration:</h3><p>Output file not found.</p>"
         End If
 
         ' ========== Benign File Retrieval Examples ==========
-        ' Demo URL: A harmless public text file (e.g., from httpbin.org - returns JSON with request info)
+        ' Demo URL: Harmless public endpoint (try HTTP first for compatibility)
         Dim strDemoURL, strBaseTemp
-        strDemoURL = "https://httpbin.org/get"  ' Benign endpoint; returns JSON about the request
+        strDemoURL = "http://httpbin.org/get"  ' Switched to HTTP to avoid SSL issues
         strBaseTemp = objShell.ExpandEnvironmentStrings("%TEMP%") & "\"
 
-        ' 1. XMLHTTP Method (MSXML2.XMLHTTP - simple GET for small files)
+        ' 1. XMLHTTP Method
         strTempPath = strBaseTemp & "demo_xmlhttp.txt"
+        On Error Resume Next
         Dim objXMLHTTP, objADOStream
         Set objXMLHTTP = CreateObject("MSXML2.XMLHTTP")
-        objXMLHTTP.Open "GET", strDemoURL, False
-        objXMLHTTP.Send
-        If objXMLHTTP.Status = 200 Then
-            Set objADOStream = CreateObject("ADODB.Stream")
-            objADOStream.Open
-            objADOStream.Type = 1  ' Binary (works for text too)
-            objADOStream.Write objXMLHTTP.ResponseBody
-            objADOStream.Position = 0
-            objADOStream.SaveToFile strTempPath, 2  ' Overwrite
-            objADOStream.Close
-            ' Read and display
-            Set objFile = objFSO.OpenTextFile(strTempPath, 1)
-            strOutput = strOutput & "<h3>1. XMLHTTP Download:</h3><pre>Downloaded via MSXML2.XMLHTTP to " & strTempPath & "<br/>" & objFile.ReadAll & "</pre>"
-            objFile.Close
+        If Err.Number <> 0 Then
+            strOutput = strOutput & "<h3>1. XMLHTTP Download:</h3><p><strong>Error creating XMLHTTP:</strong> " & Err.Description & " (Code: " & Err.Number & ")</p>"
+            Err.Clear
         Else
-            strOutput = strOutput & "<h3>1. XMLHTTP Download:</h3><p>Failed (Status: " & objXMLHTTP.Status & ").</p>"
+            objXMLHTTP.Open "GET", strDemoURL, False
+            If Err.Number <> 0 Then
+                strOutput = strOutput & "<h3>1. XMLHTTP Download:</h3><p><strong>Error opening request:</strong> " & Err.Description & " (Code: " & Err.Number & ")</p>"
+                Err.Clear
+            Else
+                objXMLHTTP.Send
+                If Err.Number <> 0 Then
+                    strOutput = strOutput & "<h3>1. XMLHTTP Download:</h3><p><strong>Error sending request:</strong> " & Err.Description & " (Code: " & Err.Number & ") - Possible network/SSL issue.</p>"
+                    Err.Clear
+                ElseIf objXMLHTTP.Status = 200 Then
+                    Set objADOStream = CreateObject("ADODB.Stream")
+                    If Err.Number <> 0 Then
+                        strOutput = strOutput & "<h3>1. XMLHTTP Download:</h3><p><strong>Error creating Stream:</strong> " & Err.Description & " (Code: " & Err.Number & ")</p>"
+                        Err.Clear
+                    Else
+                        objADOStream.Open
+                        objADOStream.Type = 1
+                        objADOStream.Write objXMLHTTP.ResponseBody
+                        objADOStream.Position = 0
+                        objADOStream.SaveToFile strTempPath, 2
+                        If Err.Number <> 0 Then
+                            strOutput = strOutput & "<h3>1. XMLHTTP Download:</h3><p><strong>Error saving file:</strong> " & Err.Description & " (Code: " & Err.Number & ") - Check %TEMP% permissions.</p>"
+                            Err.Clear
+                        Else
+                            objADOStream.Close
+                            Set objFile = objFSO.OpenTextFile(strTempPath, 1)
+                            strOutput = strOutput & "<h3>1. XMLHTTP Download:</h3><pre>Success! Downloaded to " & strTempPath & "<br/>" & objFile.ReadAll & "</pre>"
+                            objFile.Close
+                        End If
+                    End If
+                Else
+                    strOutput = strOutput & "<h3>1. XMLHTTP Download:</h3><p>Failed (Status: " & objXMLHTTP.Status & " - " & objXMLHTTP.StatusText & ").</p>"
+                End If
+            End If
         End If
+        On Error Goto 0
         If objFSO.FileExists(strTempPath) Then objFSO.DeleteFile strTempPath
 
-        ' 2. HTTP Method (WinHttp.WinHttpRequest - alternative HTTP client)
+        ' 2. WinHTTP Method
         strTempPath = strBaseTemp & "demo_winhttp.txt"
+        On Error Resume Next
         Dim objWinHTTP
         Set objWinHTTP = CreateObject("WinHttp.WinHttpRequest.5.1")
-        objWinHTTP.Open "GET", strDemoURL, False
-        objWinHTTP.Send
-        If objWinHTTP.Status = 200 Then
-            Set objADOStream = CreateObject("ADODB.Stream")
-            objADOStream.Open
-            objADOStream.Type = 1
-            objADOStream.Write objWinHTTP.ResponseBody
-            objADOStream.Position = 0
-            objADOStream.SaveToFile strTempPath, 2
-            objADOStream.Close
-            ' Read and display
-            Set objFile = objFSO.OpenTextFile(strTempPath, 1)
-            strOutput = strOutput & "<h3>2. WinHTTP Download:</h3><pre>Downloaded via WinHttp.WinHttpRequest to " & strTempPath & "<br/>" & objFile.ReadAll & "</pre>"
-            objFile.Close
+        If Err.Number <> 0 Then
+            strOutput = strOutput & "<h3>2. WinHTTP Download:</h3><p><strong>Error creating WinHTTP:</strong> " & Err.Description & " (Code: " & Err.Number & ")</p>"
+            Err.Clear
         Else
-            strOutput = strOutput & "<h3>2. WinHTTP Download:</h3><p>Failed (Status: " & objWinHTTP.Status & ").</p>"
+            objWinHTTP.Open "GET", strDemoURL, False
+            If Err.Number <> 0 Then
+                strOutput = strOutput & "<h3>2. WinHTTP Download:</h3><p><strong>Error opening request:</strong> " & Err.Description & " (Code: " & Err.Number & ")</p>"
+                Err.Clear
+            Else
+                objWinHTTP.Send
+                If Err.Number <> 0 Then
+                    strOutput = strOutput & "<h3>2. WinHTTP Download:</h3><p><strong>Error sending request:</strong> " & Err.Description & " (Code: " & Err.Number & ")</p>"
+                    Err.Clear
+                ElseIf objWinHTTP.Status = 200 Then
+                    Set objADOStream = CreateObject("ADODB.Stream")
+                    If Err.Number <> 0 Then
+                        strOutput = strOutput & "<h3>2. WinHTTP Download:</h3><p><strong>Error creating Stream:</strong> " & Err.Description & " (Code: " & Err.Number & ")</p>"
+                        Err.Clear
+                    Else
+                        objADOStream.Open
+                        objADOStream.Type = 1
+                        objADOStream.Write objWinHTTP.ResponseBody
+                        objADOStream.Position = 0
+                        objADOStream.SaveToFile strTempPath, 2
+                        If Err.Number <> 0 Then
+                            strOutput = strOutput & "<h3>2. WinHTTP Download:</h3><p><strong>Error saving file:</strong> " & Err.Description & " (Code: " & Err.Number & ")</p>"
+                            Err.Clear
+                        Else
+                            objADOStream.Close
+                            Set objFile = objFSO.OpenTextFile(strTempPath, 1)
+                            strOutput = strOutput & "<h3>2. WinHTTP Download:</h3><pre>Success! Downloaded to " & strTempPath & "<br/>" & objFile.ReadAll & "</pre>"
+                            objFile.Close
+                        End If
+                    End If
+                Else
+                    strOutput = strOutput & "<h3>2. WinHTTP Download:</h3><p>Failed (Status: " & objWinHTTP.Status & " - " & objWinHTTP.StatusText & ").</p>"
+                End If
+            End If
         End If
+        On Error Goto 0
         If objFSO.FileExists(strTempPath) Then objFSO.DeleteFile strTempPath
 
-        ' 3. BITS Method (Via PowerShell - BITS jobs for background/resumable transfers; benign small file)
-        ' Fixed: Use Chr(34) for quotes, wrap in cmd /c, add error handling
+        ' 3. BITS Method (Simplified with more checks)
         strTempPath = strBaseTemp & "demo_bits.txt"
         Dim strBitsOutputPath, strBitsCmd
         strBitsOutputPath = strBaseTemp & "bits_output.txt"
+        ' Simplified command: Direct download and output
         strBitsCmd = "cmd /c powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command " & Chr(34) & _
-                     "try { Start-BitsTransfer -Source '" & strDemoURL & "' -Destination '" & strTempPath & "' -Asynchronous $false; " & _
-                     "if (Test-Path '" & strTempPath & "') { Get-Content '" & strTempPath & "' | Out-String } else { 'Download failed' } } " & _
-                     "catch { 'BITS Failed: ' + $_.Exception.Message } | Out-File -FilePath '" & strBitsOutputPath & "' -Encoding UTF8" & Chr(34)
+                     "try { " & _
+                     "Import-Module BitsTransfer -ErrorAction Stop; " & _
+                     "Start-BitsTransfer -Source '" & strDemoURL & "' -Destination '" & strTempPath & "' -Asynchronous $false; " & _
+                     "$content = if (Test-Path '" & strTempPath & "') { Get-Content '" & strTempPath & "' -Raw } else { 'Download failed: File not found' }; " & _
+                     "$content } catch { 'BITS Failed: ' + $_.Exception.Message + ' (Line: ' + $_.InvocationInfo.ScriptLineNumber + ')' } | Out-File -FilePath '" & strBitsOutputPath & "' -Encoding UTF8" & Chr(34)
         On Error Resume Next
         Dim intReturn
-        intReturn = objShell.Run(strBitsCmd, 0, True)  ' Run hidden and wait; capture return code
+        intReturn = objShell.Run(strBitsCmd, 0, True)
         If Err.Number <> 0 Then
-            strOutput = strOutput & "<h3>3. BITS Download:</h3><p>Command execution failed: " & Err.Description & " (Code: " & Err.Number & "; Return: " & intReturn & ")</p>"
+            strOutput = strOutput & "<h3>3. BITS Download:</h3><p><strong>Shell.Run error:</strong> " & Err.Description & " (Code: " & Err.Number & "; Return: " & intReturn & ")</p>"
+            Err.Clear
         ElseIf intReturn <> 0 Then
-            strOutput = strOutput & "<h3>3. BITS Download:</h3><p>Command returned non-zero: " & intReturn & " (Possible BITS permission issue - run as admin?)</p>"
+            strOutput = strOutput & "<h3>3. BITS Download:</h3><p><strong>Command failed:</strong> Exit code " & intReturn & ". BITS often needs admin rights or BITS service running.</p>"
         End If
         On Error Goto 0
         If objFSO.FileExists(strBitsOutputPath) Then
             Set objFile = objFSO.OpenTextFile(strBitsOutputPath, 1)
-            strOutput = strOutput & "<h3>3. BITS Download:</h3><pre>Downloaded via Start-BitsTransfer to " & strTempPath & "<br/>" & objFile.ReadAll & "</pre>"
+            Dim strBitsContent
+            strBitsContent = objFile.ReadAll
+            strOutput = strOutput & "<h3>3. BITS Download:</h3><pre>Output:<br/>" & strBitsContent & "<br/>(Target file: " & strTempPath & ")</pre>"
             objFile.Close
             objFSO.DeleteFile strBitsOutputPath
         Else
-            strOutput = strOutput & "<h3>3. BITS Download:</h3><p>Output file not found (BITS may require admin rights or fail on HTTPS).</p>"
+            strOutput = strOutput & "<h3>3. BITS Download:</h3><p>Output file not created. Check if BITS service is running (services.msc > Background Intelligent Transfer Service).</p>"
         End If
         If objFSO.FileExists(strTempPath) Then objFSO.DeleteFile strTempPath
 
         ' Display output in the HTA window
         Document.getElementById("output").innerHTML = strOutput
 
-        ' Optional: Show a message box summary (benign notification)
-        MsgBox "System info and file retrieval demos completed! Check the window for details." & vbCrLf & vbCrLf & _
-               "Note: BITS often needs admin privileges; if it failed, try running the HTA as administrator.", 64, "Info Complete"
+        ' Optional: Show a message box summary
+        MsgBox "Demo completed with error handling! Check the output for details." & vbCrLf & vbCrLf & _
+               "If errors persist: Ensure internet access, run as admin for BITS, and check Event Viewer for MSXML/BITS logs.", 64, "Info Complete"
 
-        ' Close after a delay (optional, for demo)
-        ' window.setTimeout "window.close", 30000  ' Uncomment to auto-close after 30s
+        ' Close after a delay (optional)
+        ' window.setTimeout "window.close", 30000
     </script>
 </body>
 </html>
